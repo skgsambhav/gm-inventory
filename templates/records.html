@@ -1,0 +1,541 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  :root{ --muted:#6c757d; --grid:#e6eaed; --cell-pad:.22rem .36rem; --font-sm:0.82rem; }
+  .records-shell{width:100%;padding:12px 16px;box-sizing:border-box}
+  .records-card{padding:6px;border-radius:8px}
+  .controls-row{gap:8px;align-items:center;font-size:var(--font-sm)}
+  .search-input{min-width:220px;max-width:36vw}
+  .form-control-sm{padding:.18rem .36rem;height:34px;font-size:var(--font-sm)}
+  #colToggles{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.78rem;color:var(--muted)}
+  .col-toggle{display:inline-flex;gap:6px;align-items:center;user-select:none}
+  .table-wrap{width:100%;overflow:auto;margin-top:6px}
+  table#recordsTable{width:100%;border-collapse:collapse;font-size:var(--font-sm);border:1px solid var(--grid)}
+  table#recordsTable thead th{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--grid);padding:var(--cell-pad);text-align:left;white-space:nowrap;font-weight:600}
+  table#recordsTable tbody td{padding:var(--cell-pad);vertical-align:middle;border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);white-space:nowrap}
+  table#recordsTable tbody td:last-child, table#recordsTable thead th:last-child{border-right:none}
+  table#recordsTable tbody tr:hover{background:rgba(0,0,0,0.02)}
+  th.checkbox-col, td.checkbox-col{width:34px;text-align:center;padding:.12rem}
+  th.actions-col, td.actions-col{width:82px;text-align:center}
+  .col-sn,.col-mrp,.col-purc,.col-bsp1,.col-bsp2,.col-sale{white-space:nowrap;text-align:right;padding-right:8px}
+  .col-last{white-space:nowrap;color:var(--muted);font-size:0.74rem;text-align:center;padding-right:6px;padding-left:6px;width:120px}
+  .col-group,.col-size,.col-main,.col-alt{white-space:nowrap;padding-right:6px}
+  .truncate{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+  .icon-btn{border:0;background:transparent;padding:.18rem .28rem;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .icon-btn:hover{background:rgba(0,0,0,0.04)}
+  .icon-sm{width:16px;height:16px;display:block}
+  .small-muted{color:var(--muted);font-size:0.78rem}
+  .copy-success{background:#16a34a;color:#fff;border-color:#16a34a}
+  .copy-pop{animation: pop .36s cubic-bezier(.2,.9,.2,1);}
+  @keyframes pop { 0%{ transform: scale(.95); opacity:0.6 } 60%{ transform: scale(1.06); opacity:1 } 100%{ transform: scale(1); opacity:1 } }
+  .hidden-col{display:none!important}
+  /* import modal */
+  .import-progress { height:10px; background:#f1f5f9; border-radius:6px; overflow:hidden; margin-top:8px; }
+  .import-progress .bar { height:100%; width:0%; background:linear-gradient(90deg,#34d399,#10b981); transition: width .25s ease; }
+  .import-result { font-size:0.9rem; margin-top:8px; color:var(--muted); white-space:pre-wrap; }
+  @media (max-width:1000px){
+    .truncate{max-width:140px}
+    .search-input{min-width:160px;max-width:40vw}
+  }
+  @media (max-width:720px){
+    table#recordsTable thead th, table#recordsTable tbody td{padding:.18rem .28rem;font-size:0.76rem}
+    .actions-col{width:72px}
+    .col-last{width:110px}
+  }
+</style>
+
+<div class="records-shell">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0">Records</h4>
+    <div>
+      <a href="{{ url_for('add_item.add_item') }}" class="btn btn-primary btn-sm me-2">Add Item</a>
+      <!-- Use Bootstrap's data attributes to open the modal reliably -->
+      <button id="openImportBtn" type="button" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+      <a href="{{ url_for('records.records') }}" class="btn btn-outline-secondary btn-sm">Refresh</a>
+    </div>
+  </div>
+
+  <div class="card records-card">
+    <form id="searchForm" class="row gx-2 gy-2 align-items-center controls-row mb-2" method="GET" action="{{ url_for('records.records') }}">
+      <div class="col-auto" style="flex:1 1 auto;">
+        <input name="q" value="{{ q }}" class="form-control form-control-sm search-input" placeholder="Search description, group, supplier..." />
+      </div>
+
+      <!-- Group filter -->
+      <div class="col-auto">
+        <select name="group" id="groupFilter" class="form-select form-select-sm">
+          <option value="">All groups</option>
+          {% for g in groups %}
+            <option value="{{ g }}" {% if g == group_selected %}selected{% endif %}>{{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-auto">
+        <select name="per_page" id="perPage" class="form-select form-select-sm">
+          <option value="6" {% if pagination and pagination.per_page==6 %}selected{% endif %}>6 / page</option>
+          <option value="12" {% if pagination and pagination.per_page==12 %}selected{% endif %}>12 / page</option>
+          <option value="24" {% if pagination and pagination.per_page==24 %}selected{% endif %}>24 / page</option>
+          <option value="50" {% if pagination and pagination.per_page==50 %}selected{% endif %}>50 / page</option>
+        </select>
+      </div>
+
+      <div class="col-auto">
+        <button class="btn btn-outline-primary btn-sm" type="submit">Search</button>
+      </div>
+
+      <div class="col-12 d-flex align-items-center mt-2" style="gap:8px">
+        <div id="colToggles" style="flex:1 1 auto">
+          <label class="col-toggle"><input type="checkbox" data-col="col-sn" checked> SN</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-desc" checked> Description</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-group" checked> Group</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-mrp" checked> MRP</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-size" checked> Size</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-main" checked> Main</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-alt" checked> Alt</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-purc" checked> Purchase</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-bsp1" checked> BSP1</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-bsp2" checked> BSP2</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-sale" checked> Sale</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-supplier" checked> Supplier</label>
+          <label class="col-toggle"><input type="checkbox" data-col="col-last" checked> Last Updated</label>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="copySelected" type="button" class="btn btn-outline-secondary btn-sm">Copy</button>
+          <button id="downloadCsv" type="button" class="btn btn-outline-success btn-sm">Download CSV</button>
+        </div>
+
+        <div class="ms-auto small-muted">
+          {% if pagination %}
+            Showing <strong>{{ pagination.page * pagination.per_page - (pagination.per_page - 1) if pagination.total>0 else 0 }}</strong>
+            - <strong>{{ (pagination.page - 1) * pagination.per_page + pagination.items|length }}</strong>
+            of <strong>{{ pagination.total }}</strong>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+
+    <div class="table-wrap">
+      <table class="table table-sm table-hover mb-0" id="recordsTable">
+        <thead class="table-light">
+          <tr>
+            <th class="checkbox-col"><input id="masterCheckbox" type="checkbox"></th>
+            <th class="col-sn">SN</th>
+            <th class="col-desc">Description</th>
+            <th class="col-group">Group</th>
+            <th class="col-mrp">MRP</th>
+            <th class="col-size">Size</th>
+            <th class="col-main">Main</th>
+            <th class="col-alt">Alt</th>
+            <th class="col-purc">Purchase</th>
+            <th class="col-bsp1">Bulk SP1</th>
+            <th class="col-bsp2">Bulk SP2</th>
+            <th class="col-sale">Sale</th>
+            <th class="col-supplier">Supplier</th>
+            <th class="col-last">Last Updated</th>
+            <th class="actions-col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="recordsBody">
+          {% for it in items %}
+          <tr data-id="{{ it.id }}">
+            <td class="checkbox-col"><input class="row-checkbox" type="checkbox" data-id="{{ it.id }}"></td>
+
+            <td class="col-sn">
+              {% if pagination %}
+                {{ loop.index0 + (pagination.page - 1) * pagination.per_page + 1 }}
+              {% else %}
+                {{ loop.index }}
+              {% endif %}
+            </td>
+
+            <td class="col-desc" title="{{ it.description|e }}"><span class="truncate">{{ it.description }}</span></td>
+            <td class="col-group">{{ it.item_group }}</td>
+            <td class="col-mrp">₹ {{ it.mrp }}</td>
+            <td class="col-size">{{ it.item_size }}</td>
+            <td class="col-main">{{ it.main_unit }}</td>
+            <td class="col-alt">{{ it.alt_unit }} ({{ it.alt_qty }})</td>
+
+            <td class="col-purc">₹ {{ '%.2f'|format(it.purc_price or 0) }}</td>
+            <td class="col-bsp1">₹ {{ '%.2f'|format(it.bulk_sp1 or 0) }}</td>
+            <td class="col-bsp2">₹ {{ '%.2f'|format(it.bulk_sp2 or 0) }}</td>
+            <td class="col-sale">₹ {{ '%.2f'|format(it.sale_price or 0) }}</td>
+
+            <td class="col-supplier" title="{{ it.supplier|e }}"><span class="truncate">{{ it.supplier or '' }}</span></td>
+
+            <td class="col-last" title="{{ it.last_updated_ist or '' }}">{{ it.last_updated_ist or '' }}</td>
+
+            <td class="actions-col">
+              <!-- Edit icon (anchor) -->
+              <a href="{{ url_for('add_item.add_item') }}?id={{ it.id }}" class="icon-btn" title="Edit">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M3 21l3-0.75L19.5 7.75a1.5 1.5 0 0 0 0-2.12L18.37 4.5a1.5 1.5 0 0 0-2.12 0L3 17.75V21z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </a>
+
+              <!-- Delete icon (button) -->
+              <button data-id="{{ it.id }}" class="icon-btn btn-delete" title="Delete" type="button" aria-label="Delete item">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M3 6h18M8 6v13a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6M10 6V4a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="15" class="text-center small-muted">No items found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagination and pagination.pages > 1 %}
+    <nav class="mt-2" aria-label="Pagination">
+      <ul class="pagination pagination-sm justify-content-center mb-0">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('records.records', q=q, group=group_selected, page=1, per_page=pagination.per_page) }}">« First</a>
+        </li>
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('records.records', q=q, group=group_selected, page=pagination.prev_num, per_page=pagination.per_page) }}">‹ Prev</a>
+        </li>
+
+        {% for p in range(max(1, pagination.page-2), min(pagination.pages+1, pagination.page+3)) %}
+        <li class="page-item {% if p==pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('records.records', q=q, group=group_selected, page=p, per_page=pagination.per_page) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('records.records', q=q, group=group_selected, page=pagination.next_num, per_page=pagination.per_page) }}">Next ›</a>
+        </li>
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('records.records', q=q, group=group_selected, page=pagination.pages, per_page=pagination.per_page) }}">Last »</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Import Items (CSV or XLSX)</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2 small-muted">
+          <strong>Required headers (first row)</strong> — use exactly these column names in the file:
+          <div style="margin-top:6px; font-family:monospace; font-size:0.92rem; background:#f8fafc; padding:8px; border-radius:6px; overflow:auto;">
+            Description&nbsp;&nbsp; Group&nbsp;&nbsp; MRP&nbsp;&nbsp; Size&nbsp;&nbsp; Main&nbsp;&nbsp; Alt&nbsp;&nbsp; Purchase&nbsp;&nbsp; Bulk SP1&nbsp;&nbsp; Bulk SP2&nbsp;&nbsp; Sale&nbsp;&nbsp; Supplier
+          </div>
+          <div style="margin-top:6px;" class="small-muted">
+            Column order doesn't matter but headers should match. Duplicates will be skipped. Numeric fields accept decimals.
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <input id="importFile" type="file" accept=".csv, .xlsx, .xls" class="form-control form-control-sm">
+        </div>
+
+        <div>
+          <div class="import-progress" aria-hidden="true">
+            <div class="bar" id="importBar"></div>
+          </div>
+          <div class="import-result" id="importResult" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="startImport" class="btn btn-primary btn-sm">Start Import</button>
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-body text-center py-3">
+        <p class="mb-2">Delete this item?</p>
+        <div class="d-flex justify-content-center gap-2">
+          <button id="confirmYes" class="btn btn-danger btn-sm">Delete</button>
+          <button id="confirmNo" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast position-fixed top-0 end-0 p-3" id="appToast" role="alert" aria-live="assertive" aria-atomic="true">
+  <div class="toast-body" id="toastBody"></div>
+</div>
+
+<script>
+(function(){
+  const table = document.getElementById('recordsTable');
+  const body = document.getElementById('recordsBody');
+  const colCheckboxes = Array.from(document.querySelectorAll('#colToggles input[type="checkbox"][data-col]'));
+  const masterCheckbox = document.getElementById('masterCheckbox');
+  const toastEl = document.getElementById('appToast');
+  const toastBody = document.getElementById('toastBody');
+  const copyBtn = document.getElementById('copySelected');
+  let bsToast = null;
+  if (typeof bootstrap !== 'undefined') bsToast = new bootstrap.Toast(toastEl, { delay: 3000 });
+
+  function showToast(msg){ if(!toastBody) return alert(msg); toastBody.textContent = msg; if(bsToast) bsToast.show(); }
+
+  function toggleColumnClass(colClass, hide){
+    const els = table.querySelectorAll('.' + colClass);
+    els.forEach(el => hide ? el.classList.add('hidden-col') : el.classList.remove('hidden-col'));
+  }
+
+  function applyVisibilityFromStorage(){
+    try{
+      const saved = JSON.parse(localStorage.getItem('records_col_visibility')||'{}');
+      colCheckboxes.forEach(cb=>{
+        const col = cb.dataset.col;
+        const visible = saved.hasOwnProperty(col) ? !!saved[col] : true;
+        cb.checked = visible;
+        toggleColumnClass(col, !visible);
+      });
+    }catch(e){
+      colCheckboxes.forEach(cb=>{ cb.checked=true; toggleColumnClass(cb.dataset.col,false); });
+    }
+  }
+  colCheckboxes.forEach(cb=>cb.addEventListener('change', ()=>{
+    toggleColumnClass(cb.dataset.col, !cb.checked);
+    const obj={}; colCheckboxes.forEach(c=> obj[c.dataset.col]=c.checked);
+    localStorage.setItem('records_col_visibility', JSON.stringify(obj));
+  }));
+  applyVisibilityFromStorage();
+
+  // group filter submit on change
+  const groupFilter = document.getElementById('groupFilter');
+  if(groupFilter){
+    groupFilter.addEventListener('change', ()=> document.getElementById('searchForm').submit() );
+  }
+
+  function setAllRowCheckboxes(state){ Array.from(table.querySelectorAll('.row-checkbox')).forEach(ch=>ch.checked=state); }
+  masterCheckbox && masterCheckbox.addEventListener('change', function(){ setAllRowCheckboxes(this.checked); });
+
+  function getVisibleColumns(){
+    const map = [
+      { cls:'col-sn', title:'SN' },
+      { cls:'col-desc', title:'Description' },
+      { cls:'col-group', title:'Group' },
+      { cls:'col-mrp', title:'MRP' },
+      { cls:'col-size', title:'Size' },
+      { cls:'col-main', title:'Main' },
+      { cls:'col-alt', title:'Alt' },
+      { cls:'col-purc', title:'Purchase' },
+      { cls:'col-bsp1', title:'Bulk SP1' },
+      { cls:'col-bsp2', title:'Bulk SP2' },
+      { cls:'col-sale', title:'Sale' },
+      { cls:'col-supplier', title:'Supplier' },
+      { cls:'col-last', title:'Last Updated' }
+    ];
+    return map.filter(m=>{
+      const cb = document.querySelector(`#colToggles input[data-col="${m.cls}"]`);
+      return cb && cb.checked;
+    });
+  }
+
+  function extractCellText(row, cls){
+    const cell = row.querySelector('.' + cls);
+    if(!cell) return '';
+    return cell.textContent.replace(/\u00A0/g,' ').replace(/\s+/g,' ').trim();
+  }
+
+  // WhatsApp-friendly copy (bullet for item name)
+  copyBtn.addEventListener('click', function(){
+    const visible = getVisibleColumns();
+    const selectedRows = Array.from(table.querySelectorAll('.row-checkbox:checked')).map(ch => ch.closest('tr'));
+    if(selectedRows.length === 0){ showToast('No rows selected'); return; }
+
+    const colLabelMap = {};
+    visible.forEach(v => colLabelMap[v.cls] = v.title);
+
+    let msgLines = [];
+    msgLines.push(`Items (${selectedRows.length})`);
+    msgLines.push('');
+
+    selectedRows.forEach((r, idx) => {
+      const desc = extractCellText(r,'col-desc') || '(no description)';
+      msgLines.push(`• ${desc}`);
+
+      visible.forEach(v => {
+        if (v.cls === 'col-desc' || v.cls === 'col-sn') return;
+        const val = extractCellText(r, v.cls);
+        if (!val) return;
+        msgLines.push(`   ${v.title}: ${val}`);
+      });
+
+      msgLines.push(''); // blank line separator
+    });
+
+    const finalText = msgLines.join('\n');
+
+    navigator.clipboard.writeText(finalText).then(()=>{
+      const origHTML = copyBtn.innerHTML;
+      copyBtn.textContent = 'Copied ✓';
+      copyBtn.classList.add('copy-success','copy-pop');
+      showToast(`Copied ${selectedRows.length} rows (WhatsApp-ready)`);
+      setTimeout(()=>{
+        copyBtn.classList.remove('copy-success','copy-pop');
+        copyBtn.innerHTML = origHTML;
+      }, 1600);
+    }).catch(()=>{
+      const ta = document.createElement('textarea');
+      ta.value = finalText;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        const origHTML = copyBtn.innerHTML;
+        copyBtn.textContent = 'Copied ✓';
+        copyBtn.classList.add('copy-success','copy-pop');
+        showToast(`Copied ${selectedRows.length} rows (WhatsApp-ready)`);
+        setTimeout(()=>{
+          copyBtn.classList.remove('copy-success','copy-pop');
+          copyBtn.innerHTML = origHTML;
+        }, 1600);
+      } catch (e) {
+        showToast('Copy failed');
+      }
+      ta.remove();
+    });
+  });
+
+  // client-side CSV export (only visible columns; includes BOM)
+  document.getElementById('downloadCsv').addEventListener('click', function(){
+    const visible = getVisibleColumns();
+    if(visible.length===0){ showToast('Select at least one column'); return; }
+    const selectedRows = Array.from(table.querySelectorAll('.row-checkbox:checked')).map(ch=>ch.closest('tr'));
+    const rows = selectedRows.length>0 ? selectedRows : Array.from(table.querySelectorAll('#recordsBody tr'));
+    if(rows.length===0){ showToast('No rows to export'); return; }
+
+    const csvRows = [];
+    const header = visible.map(v=>`"${v.title.replace(/"/g,'""')}"`).join(',');
+    csvRows.push(header);
+
+    rows.forEach(r=>{
+      const vals = visible.map(col=>{
+        let txt = extractCellText(r, col.cls);
+        return `"${txt.replace(/"/g,'""')}"`;
+      });
+      csvRows.push(vals.join(','));
+    });
+
+    const csvText = csvRows.join('\r\n');
+    const bom = '\ufeff';
+    const blob = new Blob([bom + csvText], { type: 'text/csv;charset=utf-8;' });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url; a.download = `items_export_${ts}.csv`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  });
+
+  // AJAX delete modal handling
+  let toDeleteId = null;
+  const modalEl = document.getElementById('confirmModal');
+  const confirmYes = document.getElementById('confirmYes');
+  let bsModal = null;
+  if (typeof bootstrap !== 'undefined') bsModal = new bootstrap.Modal(modalEl);
+
+  body.addEventListener('click', function(e){
+    const delBtn = e.target.closest('.btn-delete');
+    if(!delBtn) return;
+    toDeleteId = delBtn.getAttribute('data-id');
+    if(bsModal) bsModal.show(); else { if(!confirm('Delete?')) return; doDelete(toDeleteId); }
+  });
+
+  confirmYes && confirmYes.addEventListener('click', function(){ if(!toDeleteId) return; doDelete(toDeleteId); if(bsModal) bsModal.hide(); });
+
+  function doDelete(id){
+    fetch(`/api/delete/${id}`, { method:'POST', headers:{ 'Accept':'application/json' } })
+      .then(r=>r.json())
+      .then(data=>{
+        if(data && data.success){
+          const tr = body.querySelector(`tr[data-id="${id}"]`); if(tr) tr.remove();
+          showToast('Deleted');
+        } else showToast(data && data.message ? data.message : 'Delete failed');
+      })
+      .catch(()=> showToast('Network error'));
+  }
+
+  // per-page selector submit
+  document.getElementById('perPage').addEventListener('change', function(){ document.getElementById('searchForm').submit(); });
+
+  // IMPORT modal wiring (no manual open: button uses data-bs-toggle)
+  const importFile = document.getElementById('importFile');
+  const startImport = document.getElementById('startImport');
+  const importBar = document.getElementById('importBar');
+  const importResult = document.getElementById('importResult');
+
+  function animateProgressStart(){
+    importBar.style.width = '6%';
+    let pct = 6;
+    const iv = setInterval(()=>{
+      pct += Math.random() * 8;
+      if(pct >= 70){ pct = 70; clearInterval(iv); }
+      importBar.style.width = pct + '%';
+    }, 300);
+    return iv;
+  }
+
+  function animateToFinish(iv){
+    clearInterval(iv);
+    importBar.style.width = '95%';
+    setTimeout(()=> importBar.style.width = '100%', 200);
+  }
+
+  startImport && startImport.addEventListener('click', function(){
+    if(!importFile.files || importFile.files.length === 0){ showToast('Select a file'); return; }
+    const f = importFile.files[0];
+    const fd = new FormData();
+    fd.append('file', f);
+
+    importResult.textContent = 'Uploading...';
+    importBar.style.width = '2%';
+    const iv = animateProgressStart();
+
+    fetch('{{ url_for("records.import_items") }}', {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin'
+    }).then(async (resp) => {
+      const data = await resp.json().catch(()=> null);
+      animateToFinish(iv);
+      if(!resp.ok){
+        importResult.textContent = data && data.message ? `Error: ${data.message}` : `Error uploading file (status ${resp.status})`;
+        showToast('Import failed');
+        return;
+      }
+      const total = data.total || 0;
+      const imported = data.imported || 0;
+      const skipped = data.skipped || 0;
+      const errors = data.errors || 0;
+      importResult.textContent = `Total rows: ${total}\nImported: ${imported}\nSkipped (duplicates/blank): ${skipped}\nErrors: ${errors}`;
+      if(data.skipped_examples && data.skipped_examples.length){
+        importResult.textContent += `\n\nExamples:\n` + data.skipped_examples.join('\n');
+      }
+      showToast(`Import complete — Imported ${imported}, Skipped ${skipped}`);
+      setTimeout(()=> location.reload(), 900);
+    }).catch(err=>{
+      animateToFinish(iv);
+      importResult.textContent = `Network error: ${err}`;
+      showToast('Network error during import');
+    });
+  });
+
+})();
+</script>
+{% endblock %}

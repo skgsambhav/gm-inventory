@@ -1,0 +1,94 @@
+# ============================
+# Python & Flask .gitignore
+# ============================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+
+# Flask instance folder (for local configs, uploads, etc.)
+instance/
+*.db
+*.sqlite3
+
+# Configuration files (local secrets)
+*.env
+.env.*
+!example.env  # keep a template for reference
+
+# Logs
+*.log
+logs/
+*.out
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.pytest_cache/
+
+# MyPy / Pyre / Pyright type checker
+.mypy_cache/
+.pyre/
+.pyright/
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Local test files
+test.db
+debug.log
+
+# Flask specific (optional)
+# if you have uploads or generated media
+uploads/
+media/

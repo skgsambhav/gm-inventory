@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+  .compact-card { max-width: 980px; margin: 0 auto; }
+  .form-label { font-size: 0.92rem; margin-bottom: 0.25rem; display:flex; align-items:center; gap:12px; }
+  .form-control { font-size: 0.95rem; padding: 0.45rem 0.6rem; }
+  .form-control-sm { padding: 0.35rem 0.5rem; }
+  .help-text { font-size: 0.78rem; color: #6c757d; }
+  .row.g-2 > [class*='col-'] { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .input-group-text { font-size: 0.88rem; }
+  .indicator { display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.82rem; padding:4px 10px; border-radius:999px; color:#fff; box-shadow:0 6px 18px rgba(0,0,0,0.08); transition: transform .18s, box-shadow .18s; margin-left:auto; white-space:nowrap; line-height:1; }
+  .ind-up { background: linear-gradient(90deg,#16a34a,#22c55e); }
+  .ind-down { background: linear-gradient(90deg,#ef4444,#f97316); }
+  .ind-neutral { background: linear-gradient(90deg,#6c757d,#5a6268); }
+  .ind-arrow { font-size:0.78rem; opacity:0.95; }
+  .indicator .ring { width:8px; height:8px; border-radius:50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.12); }
+  .pop { animation: pop .36s cubic-bezier(.2,.9,.2,1); }
+  @keyframes pop { 0% { transform: scale(.9); opacity:0.6 } 60% { transform: scale(1.08); opacity:1 } 100% { transform: scale(1); opacity:1 } }
+  .label-right { margin-left:auto; display:inline-flex; align-items:center; gap:8px; }
+  @media (max-width:576px){ .compact-card{ padding:0.6rem } .form-label{ font-size:0.86rem; gap:8px } .indicator{ font-size:0.78rem; padding:3px 8px } }
+</style>
+
+<div class="card shadow-sm p-3 rounded-4 compact-card">
+  <h5 class="mb-2 text-center">{{ 'Edit Item' if item else 'Add New Item' }}</h5>
+  <form id="itemForm" method="POST" novalidate>
+    {% if item %}
+      <input type="hidden" name="id" value="{{ item.id }}">
+    {% endif %}
+
+    <div class="row g-2">
+      <div class="col-12">
+        <label class="form-label">Item Description</label>
+        <input id="description" type="text" name="description" class="form-control form-control-sm"
+          value="{{ item.description if item else '' }}" placeholder="" required>
+      </div>
+
+      <div class="col-md-6 col-12">
+        <label class="form-label">Item Group</label>
+        <input id="item_group" type="text" name="item_group" class="form-control form-control-sm"
+          value="{{ item.item_group if item else '' }}">
+      </div>
+
+      <div class="col-md-6 col-12">
+        <label class="form-label">MRP</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">₹</span>
+          <input id="mrp" inputmode="numeric" pattern="\d+(?:\.\d+)?" type="text" name="mrp"
+            class="form-control form-control-sm" value="{{ item.mrp if item and item.mrp is not none else '' }}">
+        </div>
+      </div>
+
+      <div class="col-md-6 col-12">
+        <label class="form-label">Carton / Pack Size</label>
+        <input id="item_size" type="text" name="item_size" class="form-control form-control-sm"
+          value="{{ item.item_size if item else '' }}" placeholder="">
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">Main Unit</label>
+        <input id="main_unit" type="text" name="main_unit" class="form-control form-control-sm"
+          value="{{ item.main_unit if item else '' }}">
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">Alt Unit</label>
+        <input id="alt_unit" type="text" name="alt_unit" class="form-control form-control-sm"
+          value="{{ item.alt_unit if item else '' }}">
+      </div>
+
+      <div class="col-md-2 col-6">
+        <label class="form-label">Alt Qty</label>
+        <input id="alt_qty" type="number" name="alt_qty" class="form-control form-control-sm" min="0"
+          value="{{ item.alt_qty if item and item.alt_qty is not none else 0 }}">
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">Purchase Price</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">₹</span>
+          <input id="purc_price" type="text" name="purc_price" class="form-control form-control-sm"
+            value="{{ '%.2f'|format(item.purc_price) if item and item.purc_price is not none else '0.00' }}">
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">
+          Bulk SP1
+          <span id="label_marg_bsp1" class="label-right" aria-hidden="true"></span>
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">₹</span>
+          <input id="bulk_sp1" type="text" name="bulk_sp1" class="form-control form-control-sm"
+            value="{{ '%.2f'|format(item.bulk_sp1) if item and item.bulk_sp1 is not none else '0.00' }}">
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">
+          Bulk SP2
+          <span id="label_marg_bsp2" class="label-right" aria-hidden="true"></span>
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">₹</span>
+          <input id="bulk_sp2" type="text" name="bulk_sp2" class="form-control form-control-sm"
+            value="{{ '%.2f'|format(item.bulk_sp2) if item and item.bulk_sp2 is not none else '0.00' }}">
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <label class="form-label">
+          Sale Price
+          <span id="label_marg_sale" class="label-right" aria-hidden="true"></span>
+        </label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">₹</span>
+          <input id="sale_price" type="text" name="sale_price" class="form-control form-control-sm"
+            value="{{ '%.2f'|format(item.sale_price) if item and item.sale_price is not none else '0.00' }}">
+        </div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Supplier</label>
+        <input id="supplier" type="text" name="supplier" class="form-control form-control-sm"
+          value="{{ item.supplier if item and item.supplier is not none else '' }}">
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-center align-items-center mt-3 small-actions">
+      <button type="submit" class="btn btn-primary btn-sm px-4">Save</button>
+      <a href="{{ url_for('records.records') }}" class="btn btn-outline-secondary btn-sm px-3">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  // if item exists server-side, isEditing will be true; parser should NOT run on load in that case
+  const isEditing = {{ 'true' if item else 'false' }};
+
+  const desc = document.getElementById('description');
+  const group = document.getElementById('item_group');
+  const mrp = document.getElementById('mrp');
+  const size = document.getElementById('item_size');
+  const main = document.getElementById('main_unit');
+  const alt = document.getElementById('alt_unit');
+  const qty = document.getElementById('alt_qty');
+
+  const purc = document.getElementById('purc_price');
+  const bsp1 = document.getElementById('bulk_sp1');
+  const bsp2 = document.getElementById('bulk_sp2');
+  const sale = document.getElementById('sale_price');
+
+  const labelBsp1 = document.getElementById('label_marg_bsp1');
+  const labelBsp2 = document.getElementById('label_marg_bsp2');
+  const labelSale = document.getElementById('label_marg_sale');
+
+  function trim(v){ return (v||'').toString().trim(); }
+
+  // track manual edits so parser doesn't overwrite user input
+  const userEdited = {
+    main: false,
+    alt: false,
+    qty: false,
+    group: false,
+    mrp: false,
+    size: false
+  };
+
+  // Mark manually edited when user types into these fields
+  if(main) main.addEventListener('input', ()=> userEdited.main = true);
+  if(alt) alt.addEventListener('input', ()=> userEdited.alt = true);
+  if(qty) qty.addEventListener('input', ()=> userEdited.qty = true);
+  if(group) group.addEventListener('input', ()=> userEdited.group = true);
+  if(mrp) mrp.addEventListener('input', ()=> userEdited.mrp = true);
+  if(size) size.addEventListener('input', ()=> userEdited.size = true);
+
+  // parse group inside first parentheses
+  function parseGroup(t){ const m = trim(t).match(/\(([^)]+)\)/); return m ? m[1].trim() : ''; }
+
+  // parse MRP: only number directly before / or /-
+  function parseMrp(t){
+    const m = trim(t).match(/(\d+(?:\.\d+)?)\s*(?=\/-?)/);
+    return m ? Math.floor(Number(m[1])) : '';
+  }
+
+  // parse size: e.g. "1CTN=20PKD" or "1 CTN = 20 PKD"
+  function parseSize(t){
+    if(!t) return null;
+    const m = trim(t).match(/(\d+)\s*([A-Za-z]+)\s*=\s*(\d+)\s*([A-Za-z]+)/i);
+    if(!m) return null;
+    return {
+      leftQty: parseInt(m[1],10)||0,
+      main: m[2].toUpperCase(),
+      rightQty: parseInt(m[3],10)||0,
+      alt: m[4].toUpperCase()
+    };
+  }
+
+  // build indicator HTML or return empty string
+  function buildIndicatorHtml(pct, absMoney){
+    if(pct === '' || pct === null || !isFinite(pct)) return '';
+    const sign = pct >= 0 ? '↑' : '↓';
+    const cls = pct >= 0 ? 'ind-up' : 'ind-down';
+    return `<span class="indicator ${cls}" title="Margin ₹ ${Math.abs(absMoney).toFixed(2)}"><span class="ring"></span> ${Math.abs(pct).toFixed(1)}% <span class="ind-arrow">${sign}</span></span>`;
+  }
+
+  // calc margin percent and absolute difference
+  function calcMarginPercent(sellStr, costStr){
+    const sell = parseFloat(String(sellStr).replace(/,/g,'')) || 0;
+    const cost = parseFloat(String(costStr).replace(/,/g,'')) || 0;
+    if(cost === 0) return { pct: '', abs: 0 };
+    const pct = ((sell - cost) / cost) * 100;
+    const abs = sell - cost;
+    return { pct: isFinite(pct) ? pct : '', abs: isFinite(abs) ? abs : 0 };
+  }
+
+  function animateNew(el){
+    if(!el) return;
+    const node = el.querySelector('.indicator');
+    if(!node) return;
+    node.classList.remove('pop');
+    void node.offsetWidth;
+    node.classList.add('pop');
+  }
+
+  function updateIndicators(){
+    const cost = parseFloat(String(purc.value || '').replace(/,/g,'')) || 0;
+    if(cost === 0){
+      labelBsp1.innerHTML = '';
+      labelBsp2.innerHTML = '';
+      labelSale.innerHTML = '';
+      return;
+    }
+
+    const r1 = calcMarginPercent(bsp1.value, cost);
+    const r2 = calcMarginPercent(bsp2.value, cost);
+    const r3 = calcMarginPercent(sale.value, cost);
+
+    const html1 = buildIndicatorHtml(r1.pct, r1.abs);
+    const html2 = buildIndicatorHtml(r2.pct, r2.abs);
+    const html3 = buildIndicatorHtml(r3.pct, r3.abs);
+
+    if(labelBsp1.innerHTML !== html1){ labelBsp1.innerHTML = html1; animateNew(labelBsp1); }
+    if(labelBsp2.innerHTML !== html2){ labelBsp2.innerHTML = html2; animateNew(labelBsp2); }
+    if(labelSale.innerHTML !== html3){ labelSale.innerHTML = html3; animateNew(labelSale); }
+  }
+
+  // When description changes, auto-populate group, mrp, and size fields only if user didn't edit them manually.
+  function handleDescriptionInput(){
+    const t = trim(desc.value);
+    // GROUP
+    const g = parseGroup(t);
+    if(g && !userEdited.group){
+      group.value = g;
+    } else if(!t.includes('(') && !userEdited.group){
+      group.value = '';
+    }
+
+    // MRP
+    const m = parseMrp(t);
+    if(m && !userEdited.mrp){
+      mrp.value = m;
+    } else if(!(/[0-9]/.test(t)) && !userEdited.mrp){
+      mrp.value = '';
+    }
+
+    // SIZE parse - only fill main/alt/qty if parser finds size and user hasn't edited them
+    const s = parseSize(t);
+    if(s){
+      if(!userEdited.size) size.value = `${s.leftQty}${s.main}=${s.rightQty}${s.alt}`;
+      if(!userEdited.main) main.value = s.main;
+      if(!userEdited.alt) alt.value = s.alt;
+      if(!userEdited.qty) qty.value = s.rightQty;
+    }
+    // NOTE: if parser doesn't find size we DO NOT clear manually-entered main/alt/qty
+  }
+
+  // When size input changed manually, populate main/alt/qty only when parser finds valid size and user hasn't edited those fields
+  function handleSizeInput(){
+    const s = parseSize(size.value);
+    if(s){
+      if(!userEdited.main) main.value = s.main;
+      if(!userEdited.alt) alt.value = s.alt;
+      if(!userEdited.qty) qty.value = s.rightQty;
+    } else {
+      // If size is cleared by user, clear only fields that were not manually edited
+      if(!userEdited.main) main.value = '';
+      if(!userEdited.alt) alt.value = '';
+      if(!userEdited.qty) qty.value = '';
+    }
+  }
+
+  // Hook events
+  desc.addEventListener('input', handleDescriptionInput);
+  size.addEventListener('input', handleSizeInput);
+
+  // indicators update hooks
+  [purc, bsp1, bsp2, sale].forEach(el=>{
+    if(!el) return;
+    el.addEventListener('input', updateIndicators);
+    el.addEventListener('blur', updateIndicators);
+  });
+
+  // IMPORTANT: On load, DO NOT auto-run parser if editing an existing item.
+  // This ensures the stored DB values remain visible when you open Edit.
+  window.addEventListener('load', function(){
+    try {
+      if (!isEditing) {
+        // For "Add new" flow, auto-parse immediately from description/size
+        handleDescriptionInput();
+        handleSizeInput();
+      }
+    } catch(e){ /* ignore */ }
+    try { updateIndicators(); } catch(e){ /* ignore */ }
+  });
+
+})();
+</script>
+{% endblock %}
