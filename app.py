@@ -1,35 +1,74 @@
 # app.py
 import os
-from flask import Flask
-from extensions import db  # single, shared SQLAlchemy instance
-# Do NOT import routes at module-level here — import after db.init_app
+import logging
+from flask import Flask, jsonify
+from extensions import db
+from config import config
 
-def create_app():
+def create_app(config_name=None):
+    """Application factory pattern"""
+    if config_name is None:
+        config_name = os.environ.get('FLASK_ENV', 'development')
+
     app = Flask(__name__, static_folder="static", template_folder="templates")
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.secret_key = os.environ.get("FLASK_SECRET", "supersecretkey")
 
-    # Initialize DB with app
+    # Load configuration
+    app.config.from_object(config.get(config_name, config['default']))
+
+    # Initialize extensions
     db.init_app(app)
 
-    # Import models so SQLAlchemy knows about them (safe after init_app)
-    # import models here to ensure model classes are registered with this db
+    # Configure logging
+    if not app.debug and not app.testing:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        )
+
+    # Import models
     import models  # noqa: F401
 
-    # Create DB tables if they don't exist
+    # Create database tables
     with app.app_context():
         db.create_all()
 
-    # Now import and register blueprints (after db is initialized)
+    # Register blueprints
     from routes.add_item import add_item_bp
     from routes.records import records_bp
 
     app.register_blueprint(add_item_bp)
     app.register_blueprint(records_bp)
 
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found_error(error):
+        if app.config.get('DEBUG'):
+            return str(error), 404
+        return jsonify({'error': 'Not found'}), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        app.logger.error(f'Server Error: {error}')
+        if app.config.get('DEBUG'):
+            return str(error), 500
+        return jsonify({'error': 'Internal server error'}), 500
+
+    @app.errorhandler(413)
+    def too_large(error):
+        return jsonify({
+            'success': False,
+            'message': 'File too large. Maximum size is 16MB.'
+        }), 413
+
+    # Health check endpoint
+    @app.route('/health')
+    def health():
+        return jsonify({'status': 'healthy'}), 200
+
     return app
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

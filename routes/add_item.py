@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, redirect, flash, url_for, current_app
 from extensions import db
 from models import Item
+from sqlalchemy import func
 import re
 from datetime import datetime
 
@@ -144,6 +145,18 @@ def add_item():
 
             if '/' not in desc and not mrp_form_raw:
                 mrp_val = 0
+
+            # Check for duplicate description (case-insensitive)
+            if desc:
+                # When editing, exclude current item from duplicate check
+                duplicate_query = Item.query.filter(func.lower(Item.description) == func.lower(desc))
+                if item_id:
+                    duplicate_query = duplicate_query.filter(Item.id != int(item_id))
+
+                existing_item = duplicate_query.first()
+                if existing_item:
+                    flash(f'An item with description "{desc}" already exists (ID: {existing_item.id}). Please use a different name.', 'danger')
+                    return redirect(url_for('add_item.add_item'))
 
             # assign values
             item.description = desc

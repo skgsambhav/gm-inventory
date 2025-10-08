@@ -92,3 +92,9 @@ debug.log
 # if you have uploads or generated media
 uploads/
 media/
+
+# Claude Code settings
+.claude/
+
+# Temporary/junk files
+nul

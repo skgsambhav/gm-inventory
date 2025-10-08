@@ -102,8 +102,19 @@
         </div>
 
         <div style="display:flex;gap:8px;align-items:center">
-          <button id="copySelected" type="button" class="btn btn-outline-secondary btn-sm">Copy</button>
-          <button id="downloadCsv" type="button" class="btn btn-outline-success btn-sm">Download CSV</button>
+          <button id="copySelected" type="button" class="btn btn-outline-secondary btn-sm" title="Copy selected items (or all if none selected)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline; margin-right: 4px;">
+              <path d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z" stroke="currentColor" stroke-width="2"/>
+              <path d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            Copy
+          </button>
+          <button id="downloadCsv" type="button" class="btn btn-outline-success btn-sm" title="Export to CSV">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline; margin-right: 4px;">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            CSV
+          </button>
         </div>
 
         <div class="ms-auto small-muted">
@@ -353,64 +364,100 @@
   }
 
   // WhatsApp-friendly copy (bullet for item name)
-  copyBtn.addEventListener('click', function(){
-    const visible = getVisibleColumns();
-    const selectedRows = Array.from(table.querySelectorAll('.row-checkbox:checked')).map(ch => ch.closest('tr'));
-    if(selectedRows.length === 0){ showToast('No rows selected'); return; }
+  if(copyBtn) {
+    copyBtn.addEventListener('click', function(){
+      console.log('Copy button clicked');
+      const visible = getVisibleColumns();
+      let selectedRows = Array.from(table.querySelectorAll('.row-checkbox:checked')).map(ch => ch.closest('tr'));
 
-    const colLabelMap = {};
-    visible.forEach(v => colLabelMap[v.cls] = v.title);
+      // If no rows selected, copy all visible rows
+      if(selectedRows.length === 0){
+        selectedRows = Array.from(table.querySelectorAll('#recordsBody tr')).filter(tr => !tr.querySelector('td[colspan]'));
+        if(selectedRows.length === 0){ showToast('No items to copy'); return; }
+      }
 
-    let msgLines = [];
-    msgLines.push(`Items (${selectedRows.length})`);
-    msgLines.push('');
+      console.log('Copying ' + selectedRows.length + ' rows');
 
-    selectedRows.forEach((r, idx) => {
-      const desc = extractCellText(r,'col-desc') || '(no description)';
-      msgLines.push(`• ${desc}`);
+      const colLabelMap = {};
+      visible.forEach(v => colLabelMap[v.cls] = v.title);
 
-      visible.forEach(v => {
-        if (v.cls === 'col-desc' || v.cls === 'col-sn') return;
-        const val = extractCellText(r, v.cls);
-        if (!val) return;
-        msgLines.push(`   ${v.title}: ${val}`);
+      let msgLines = [];
+      msgLines.push(`Items (${selectedRows.length})`);
+      msgLines.push('');
+
+      selectedRows.forEach((r, idx) => {
+        const desc = extractCellText(r,'col-desc') || '(no description)';
+        msgLines.push(`• ${desc}`);
+
+        visible.forEach(v => {
+          if (v.cls === 'col-desc' || v.cls === 'col-sn') return;
+          const val = extractCellText(r, v.cls);
+          if (!val) return;
+          msgLines.push(`   ${v.title}: ${val}`);
+        });
+
+        msgLines.push(''); // blank line separator
       });
 
-      msgLines.push(''); // blank line separator
-    });
+      const finalText = msgLines.join('\n');
+      const wasSelected = table.querySelectorAll('.row-checkbox:checked').length > 0;
+      const copyMsg = wasSelected ? `Copied ${selectedRows.length} selected items` : `Copied all ${selectedRows.length} items`;
 
-    const finalText = msgLines.join('\n');
+      console.log('Text to copy:', finalText);
 
-    navigator.clipboard.writeText(finalText).then(()=>{
-      const origHTML = copyBtn.innerHTML;
-      copyBtn.textContent = 'Copied ✓';
-      copyBtn.classList.add('copy-success','copy-pop');
-      showToast(`Copied ${selectedRows.length} rows (WhatsApp-ready)`);
-      setTimeout(()=>{
-        copyBtn.classList.remove('copy-success','copy-pop');
-        copyBtn.innerHTML = origHTML;
-      }, 1600);
-    }).catch(()=>{
-      const ta = document.createElement('textarea');
-      ta.value = finalText;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        const origHTML = copyBtn.innerHTML;
-        copyBtn.textContent = 'Copied ✓';
-        copyBtn.classList.add('copy-success','copy-pop');
-        showToast(`Copied ${selectedRows.length} rows (WhatsApp-ready)`);
-        setTimeout(()=>{
-          copyBtn.classList.remove('copy-success','copy-pop');
-          copyBtn.innerHTML = origHTML;
-        }, 1600);
-      } catch (e) {
-        showToast('Copy failed');
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(finalText).then(()=>{
+          console.log('Copied via clipboard API');
+          const origHTML = copyBtn.innerHTML;
+          copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline; margin-right: 4px;"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Copied!';
+          copyBtn.classList.add('copy-success','copy-pop');
+          showToast(copyMsg);
+          setTimeout(()=>{
+            copyBtn.classList.remove('copy-success','copy-pop');
+            copyBtn.innerHTML = origHTML;
+          }, 1600);
+        }).catch((err)=>{
+          console.error('Clipboard API failed:', err);
+          fallbackCopy();
+        });
+      } else {
+        console.log('Clipboard API not available, using fallback');
+        fallbackCopy();
       }
-      ta.remove();
+
+      function fallbackCopy() {
+        const ta = document.createElement('textarea');
+        ta.value = finalText;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          const successful = document.execCommand('copy');
+          console.log('Fallback copy:', successful);
+          if (successful) {
+            const origHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline; margin-right: 4px;"><path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Copied!';
+            copyBtn.classList.add('copy-success','copy-pop');
+            showToast(copyMsg);
+            setTimeout(()=>{
+              copyBtn.classList.remove('copy-success','copy-pop');
+              copyBtn.innerHTML = origHTML;
+            }, 1600);
+          } else {
+            showToast('Copy failed - please copy manually');
+          }
+        } catch (e) {
+          console.error('Fallback copy failed:', e);
+          showToast('Copy failed - please copy manually');
+        }
+        document.body.removeChild(ta);
+      }
     });
-  });
+  } else {
+    console.error('Copy button not found');
+  }
 
   // client-side CSV export (only visible columns; includes BOM)
   document.getElementById('downloadCsv').addEventListener('click', function(){
